@@ -1,6 +1,6 @@
 from expects import expect, equal, raise_error
 
-# Exceptions
+
 class AllocationError(Exception):
     pass
 
@@ -10,7 +10,9 @@ class AllocationError(Exception):
 # Shipment A1 stock
 # ...
 
+
 class Stock:
+
     def __init__(self, sku, qty):
         self.sku = sku
         self.qty = qty
@@ -20,21 +22,28 @@ class Stock:
 
 
 class Line:
+
     def __init__(self, sku, qty):
         self.sku = sku
         self.qty = qty
 
 
 class Product:
+
     def __init__(self, sku, stocks):
         self.sku = sku
         self.stocks = stocks
 
     def allocate_line(self, line):
-        Allocation(self.stocks[0], line)
+        for stock in self.stocks:
+            try:
+                return Allocation(stock, line)
+            except AllocationError:
+                pass
 
 
 class Allocation:
+
     def __init__(self, stock, line):
         if stock.sku != line.sku:
             err_msg = 'Can not allocate stock and line with different SKUs'
@@ -50,9 +59,10 @@ class Allocation:
 
 
 class When_we_have_one_stock_and_one_line_allocate_them:
+
     def given_stock_and_one_line(self):
-        self.stock = Stock(sku='A', qty=10)
-        self.line = Line(sku='A', qty=10)
+        self.stock = Stock(sku='🐄 ', qty=10)
+        self.line = Line(sku='🐄 ', qty=10)
         self.allocation = Allocation(self.stock, self.line)
 
     def should_allocate_them(self):
@@ -63,7 +73,7 @@ class When_we_have_one_stock_and_one_line_allocate_them:
 class When_we_allocate_stock_it_cannot_be_different_sku:
 
     def given_stock_and_line_of_different_sku(self):
-        self.stock = Stock(sku='A', qty=10)
+        self.stock = Stock(sku='🐄 ', qty=10)
         self.line = Line(sku='B', qty=10)
 
     def should_not_allocate(self):
@@ -73,9 +83,10 @@ class When_we_allocate_stock_it_cannot_be_different_sku:
 
 
 class When_we_allocate_the_stock_level_should_decrease:
+
     def given_stock_and_one_line(self):
-        self.stock = Stock(sku='A', qty=10)
-        self.line = Line(sku='A', qty=2)
+        self.stock = Stock(sku='🐄 ', qty=10)
+        self.line = Line(sku='🐄 ', qty=2)
         self.allocation = Allocation(self.stock, self.line)
 
     def should_decrease_stock_level(self):
@@ -83,9 +94,10 @@ class When_we_allocate_the_stock_level_should_decrease:
 
 
 class When_we_allocate_to_insufficient_stock:
+
     def given_stock_and_one_line(self):
-        self.stock = Stock(sku='A', qty=1)
-        self.line = Line(sku='A', qty=2)
+        self.stock = Stock(sku='🐄 ', qty=1)
+        self.line = Line(sku='🐄 ', qty=2)
 
     def should_not_allocate(self):
         def allocate():
@@ -94,13 +106,14 @@ class When_we_allocate_to_insufficient_stock:
 
 
 class When_we_allocate_a_sale_order_line_on_product:
+
     def given_a_product_with_stock_and_one_line(self):
-        self.stock = Stock(sku='A', qty=10)
+        self.stock = Stock(sku='🐄 ', qty=10)
         self.product = Product(
-            sku='A',
+            sku='🐄 ',
             stocks=[self.stock],
         )
-        self.line = Line(sku='A', qty=2)
+        self.line = Line(sku='🐄 ', qty=2)
         self.product.allocate_line(self.line)
 
     def should_allocate(self):
@@ -108,35 +121,94 @@ class When_we_allocate_a_sale_order_line_on_product:
 
 
 class When_we_allocate_a_line_to_a_product_with_more_stocks:
+
     def given_a_product_with_stocks(self):
-        self.stock1 = Stock(sku='A', qty=5)
-        self.stock2 = Stock(sku='A', qty=10)
+        self.stock1 = Stock(sku='🐄 ', qty=5)
+        self.stock2 = Stock(sku='🐄 ', qty=10)
         self.product = Product(
-            sku='A',
+            sku='🐄 ',
             stocks=[self.stock1, self.stock2],
         )
-        self.line = Line(sku='A', qty=6)
+        self.line = Line(sku='🐄 ', qty=6)
         self.product.allocate_line(self.line)
 
     def should_allocate_at_the_first_available(self):
         expect(self.stock1.qty).to(equal(5))
         expect(self.stock2.qty).to(equal(4))
-# class WarehouseStock(Stock):
-# property (weight)
-#    weight = 1
 
-# class Stock (location)
-     # location weight (1, 2)
-     # qty
 
-# class Line
-# class Allocation
+class FakeUnitOfWork:
 
-#
-#we have stock in warehouse for sku A
-#we have stock in batch for sku A
-#
-#self.warehouse``
-#
-#when I want to allocate 
-#I want the warehouse's qty to decrease if there is qty
+    def __init__(self, fixtures):
+        self.committed = False
+        self.rolled_back = False
+        self.products = fixtures
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, traceback):
+        pass
+
+    def commit(self):
+        self.committed = True
+
+    def rollback(self):
+        self.rolled_back = True
+
+
+class FakeUnitOfWorkManager:
+
+    def __init__(self, fixtures):
+        self.sess = FakeUnitOfWork(fixtures)
+
+    def start(self):
+        return self.sess
+
+    @property
+    def committed(self):
+        return self.sess.committed
+
+    @property
+    def availability(self):
+        return self.sess.availability
+
+    @availability.setter
+    def availability(self, v):
+        self.sess.availability = v
+
+
+class CreateStockCommand:
+
+    def __init__(self, sku, qty):
+        self.sku = sku
+        self.qty = qty
+
+
+class CreateStockCommandHandler:
+
+    def __call__(self, cmd):
+        with self.uow.start() as tx:
+            product = tx.products.get(cmd.sku)
+            stock = Stock(sku=cmd.sku, qty=cmd.qty)
+            product.stocks.append(stock)
+            tx.commit()
+
+
+class When_we_have_a_command_that_we_pass_to_a_handler:
+
+    def given_a_command_and_a_handler(self):
+
+        self.product = Product(
+            sku='🐄 ',
+            stocks=[],
+        )
+        command = CreateStockCommand(sku='🐄 ', qty=1)
+        handler = CreateStockCommandHandler()
+        self.manager = FakeUnitOfWorkManager(fixtures={'🐄 ': self.product})
+        handler.uow = self.manager
+        handler(command)
+
+    def then_stock_is_created(self):
+        expect(self.product.stocks[0].qty).to(equal(1))
+        expect(self.manager.committed).to(equal(True))
